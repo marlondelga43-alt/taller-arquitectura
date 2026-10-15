@@ -27,7 +27,16 @@ resource "google_compute_network" "vpc_network" {
   auto_create_subnetworks = true
 }
 
-# 2. Una regla de firewall para permitir tráfico web (HTTP)
+# Rangos de origen permitidos para HTTP. Por defecto solo red privada.
+# Para una prueba desde tu equipo, reemplaza el valor por tu IP con /32.
+# Nunca uses 0.0.0.0/0 sin una justificación documentada.
+variable "allowed_source_ranges" {
+  description = "Rangos CIDR autorizados a conectarse al puerto 80"
+  type        = list(string)
+  default     = ["10.0.0.0/8"]
+}
+
+# 2. Una regla de firewall para permitir tráfico web (HTTP) solo desde rangos autorizados
 resource "google_compute_firewall" "default" {
   name    = "taller-firewall-allow-http"
   network = google_compute_network.vpc_network.name
@@ -36,7 +45,7 @@ resource "google_compute_firewall" "default" {
     protocol = "tcp"
     ports    = ["80"] # Puerto HTTP
   }
-  source_ranges = ["0.0.0.0/0"] # Permitir desde cualquier IP
+  source_ranges = var.allowed_source_ranges
 }
 
 # 3. Un servidor web (máquina virtual)
@@ -51,10 +60,14 @@ resource "google_compute_instance" "web_server" {
     }
   }
 
+  # Sin access_config: la VM no tiene IP pública. Se accede por un balanceador
+  # de carga o por IAP, no directamente desde internet.
   network_interface {
     network = google_compute_network.vpc_network.name
-    access_config {
-      # Asigna una IP pública (efímera)
-    }
+  }
+
+  # Bloquea las llaves SSH a nivel de proyecto; solo se usan llaves de la instancia.
+  metadata = {
+    block-project-ssh-keys = "TRUE"
   }
 }
